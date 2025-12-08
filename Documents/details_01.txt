@@ -1,0 +1,18 @@
+rtsp://admin:B!sk2025@192.168.137.95:554/Streaming/Channels/101/
+
+
+(.venv) rio@GP73:~/100_Py/ip_transcoder$ python manage.py show_ffmpeg_cmd 2
+Channel: File Test 1
+FFmpeg command:
+ffmpeg -y -hide_banner -loglevel warning -i /home/rio/test_media/testsrc.mp4 -c:v copy -c:a copy -f hls -hls_time 4 -hls_list_size 10 -hls_flags delete_segments /tmp/hls_test1/index.m3u8
+(.venv) rio@GP73:~/100_Py/ip_transcoder$ python manage.py show_ffmpeg_cmd 1
+Channel: Test Multicast 1
+FFmpeg command:
+ffmpeg -y -hide_banner -loglevel warning -i 'udp://@224.2.2.2:2001?fifo_size=1000000&overrun_nonfatal=1' -c:v copy -c:a copy -f hls -hls_time 4 -hls_list_size 10 -hls_flags delete_segments /tmp/hls_test1/index.m3u8
+
+rio@GP73:~$ ffmpeg -y -hide_banner -loglevel warning -i /home/rio/test_media/testsrc.mp4 -c:v copy -c:a copy -f hls -hls_time 4 -hls_list_size 10 -hls_flags delete_segments /tmp/hls_test1/index.m3u8
+rio@GP73:~$ ls /tmp/hls_test1/
+index0.ts  index1.ts  index2.ts  index.m3u8
+rio@GP73:~$ 
+
+
