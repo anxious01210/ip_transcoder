@@ -40,6 +40,7 @@ class JobPurpose(models.TextChoices):
     LIVE_FORWARD = "live_forward", "Live forward"
     RECORD = "record", "Record"
     # Later we can add: PLAYBACK = "playback", "Playback (from recording)"
+    PLAYBACK = "playback", "Playback (delayed)"
 
 
 class Channel(models.Model):
