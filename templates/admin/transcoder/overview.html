@@ -1,0 +1,365 @@
+{% extends "admin/base_site.html" %}
+{% load static transcoder_extras %}
+
+{% block title %}IP Transcoder Overview{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <style>
+      .tx-card {
+          margin-bottom: 2rem;
+          padding: 1rem 1.25rem;
+          border: 1px solid #444;
+          border-radius: 6px;
+          background: #111;
+      }
+
+      .tx-card h2, .tx-card h3 {
+          margin-top: 0;
+      }
+
+      .tx-info-section {
+          margin-bottom: 2rem;
+      }
+
+      .tx-pill {
+          display: inline-block;
+          padding: 0.1rem 0.5rem;
+          border-radius: 999px;
+          font-size: 11px;
+          background: #222;
+          border: 1px solid #555;
+          text-transform: uppercase;
+          letter-spacing: .03em;
+      }
+
+      details.tx-details {
+          margin: 0.4rem 0;
+          border-radius: 4px;
+          border: 1px solid #444;
+          background: #151515;
+      }
+
+      details.tx-details[open] {
+          background: #181818;
+      }
+
+      details.tx-details > summary {
+          cursor: pointer;
+          padding: 0.5rem 0.75rem;
+          list-style: none;
+          font-weight: 600;
+      }
+
+      details.tx-details > summary::-webkit-details-marker {
+          display: none;
+      }
+
+      details.tx-details > summary::before {
+          content: "▶";
+          display: inline-block;
+          margin-right: 0.35rem;
+          font-size: 10px;
+          transform: translateY(-1px);
+      }
+
+      details.tx-details[open] > summary::before {
+          content: "▼";
+      }
+
+      details.tx-details .tx-details-body {
+          padding: 0.4rem 0.9rem 0.7rem 1.4rem;
+          font-size: 13px;
+          line-height: 1.5;
+      }
+
+      .tx-details-body code {
+          font-size: 12px;
+      }
+
+      .tx-table {
+          width: 100%;
+          margin-bottom: 1rem;
+      }
+
+      .tx-table th,
+      .tx-table td {
+          padding: 0.3rem 0.5rem;
+          border-bottom: 1px solid #333;
+      }
+
+      .tx-table thead th {
+          background: #151515;
+          font-weight: 600;
+      }
+
+      .tx-muted {
+          color: #aaa;
+          font-size: 12px;
+      }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h1>IP Transcoder – System Overview</h1>
+
+  <div class="tx-info-section tx-card">
+    <p style="margin-bottom: .6rem;">
+      This page explains what the system can do for each <strong>Channel</strong>, and how
+      <strong>Recording</strong>, <strong>Time-shift playback</strong> and the recorded
+      <strong>Archive</strong> relate to each other.
+    </p>
+
+    <details class="tx-details" open>
+      <summary>Recording &mdash; how live input is stored on disk</summary>
+      <div class="tx-details-body">
+        <p>
+          <span class="tx-pill">Feature</span>
+          Uses <strong>Record</strong> schedules (purpose = <code>record</code>) to
+          save the channel’s input as MPEG-TS files on disk.
+        </p>
+        <ul>
+          <li>
+            Each <strong>Channel</strong> has an <code>input_url</code> (camera RTSP,
+            test file, etc.).
+          </li>
+          <li>
+            A <strong>Record schedule</strong> defines <em>when</em> this channel is
+            recorded (weekdays, time window).
+          </li>
+          <li>
+            The recorder writes segments like:<br>
+            <code>media/recordings/&lt;ChannelName&gt;/YYYYMMDD/&lt;ChannelName&gt;_%Y%m%d-%H%M%S.ts</code>
+          </li>
+          <li>
+            Full-day recording is achieved by setting start and end time both to
+            <code>00:00</code> (midnight → midnight) for the selected weekdays.
+          </li>
+        </ul>
+        <p class="tx-muted">
+          Example: Channel "File Test 24h" with a 24/7 Record schedule will keep
+          writing timestamped TS files into a dated folder for each day.
+        </p>
+      </div>
+    </details>
+
+    <details class="tx-details">
+      <summary>Time-shift playback &mdash; live minus N minutes on UDP</summary>
+      <div class="tx-details-body">
+        <p>
+          <span class="tx-pill">Feature</span>
+          Uses <strong>Playback (delayed)</strong> schedules
+          (purpose = <code>playback</code>) plus the channel’s
+          <strong>TimeShiftProfile</strong> to output a delayed UDP stream
+          (unicast or multicast).
+        </p>
+        <ul>
+          <li>
+            A <strong>TimeShiftProfile</strong> is attached 1:1 to a channel and defines:
+            <ul>
+              <li><code>delay_minutes</code> &ndash; how far behind live the stream should be.</li>
+              <li><code>output_udp_url</code> &ndash; where the delayed MPEG-TS is sent.</li>
+            </ul>
+          </li>
+          <li>
+            A <strong>Playback schedule</strong> decides when the delayed channel
+            should be active (often 24/7).
+          </li>
+          <li>
+            When active, FFmpeg:
+            <ul>
+              <li>finds the recorded TS segment corresponding to <em>now − delay</em>,</li>
+              <li>plays it out at real-time speed (using <code>-re</code>),</li>
+              <li>and sends it to <code>output_udp_url</code>.</li>
+            </ul>
+          </li>
+        </ul>
+
+        <p><strong>Supported UDP URL types:</strong></p>
+        <ul>
+          <li>
+            <strong>Unicast</strong> (single destination host):<br>
+            <code>udp://127.0.0.1:5000</code><br>
+            <code>udp://10.0.0.50:5000</code>
+          </li>
+          <li>
+            <strong>Multicast</strong> (one to many, routed by the network):<br>
+            <code>udp://239.0.0.10:2001?ttl=1</code><br>
+            Recommended range for customer-controlled streams is usually
+            <code>239.x.x.x</code> (administratively scoped multicast).
+          </li>
+          <li>
+            <strong>Ports:</strong>
+            Typically use unprivileged ports in the range
+            <code>1024–65535</code>.
+            Avoid well-known ports (0–1023) to prevent clashes with system services.
+          </li>
+        </ul>
+
+        <p class="tx-muted">
+          Example: Channel "File Test 24h" with delay = 60 minutes and
+          <code>output_udp_url = udp://239.0.0.10:5000?ttl=1</code> becomes a
+          multicast “catch-up” channel that always plays the signal one hour behind live.
+        </p>
+      </div>
+    </details>
+
+    <details class="tx-details">
+      <summary>Archive playback &mdash; using the recorded files later</summary>
+      <div class="tx-details-body">
+        <p>
+          <span class="tx-pill">Feature</span>
+          The TS files recorded by <strong>Record</strong> schedules form an
+          archive that can be used for manual replay or future VOD features.
+        </p>
+        <ul>
+          <li>
+            Any recorded <code>.ts</code> file can be opened directly in
+            players like VLC.
+          </li>
+          <li>
+            It is possible to build extra tools on top of this archive, such as:
+            <ul>
+              <li>
+                <strong>Ad-hoc replay via UDP</strong> &mdash; FFmpeg reads
+                a list of TS segments and re-streams them as a temporary channel.
+              </li>
+              <li>
+                <strong>HLS / VOD packaging</strong> &mdash; FFmpeg converts a
+                time range into HLS (<code>.m3u8</code> + small TS chunks) that
+                can be served over HTTP for on-demand playback and seeking.
+              </li>
+            </ul>
+          </li>
+          <li>
+            These advanced workflows are not shown directly in this page yet
+            but are fully supported by the way recordings are stored
+            (timestamped files, one channel per folder).
+          </li>
+        </ul>
+        <p class="tx-muted">
+          Recommendation: for customers who need “play yesterday at 14:00–15:00”,
+          you can implement either an ad-hoc replay job (UDP channel) or
+          generate HLS VOD assets from the appropriate recorded segments.
+        </p>
+      </div>
+    </details>
+  </div>
+
+  <h2>Per-channel configuration</h2>
+  <p class="tx-muted">
+    Each section below shows how Recording and Time-shift playback are configured
+    for a single Channel.
+  </p>
+
+  {% for ch in channels %}
+    {% with scheds=schedules_by_channel|get_item:ch.id %}
+      <div class="tx-card">
+        <h3>
+          Channel {{ ch.id }} &ndash; {{ ch.name }}
+        </h3>
+
+        <table class="tx-table">
+          <tbody>
+          <tr>
+            <th style="width: 20%;">Input source</th>
+            <td><code>{{ ch.input_url }}</code></td>
+          </tr>
+          <tr>
+            <th>Time-shift profile</th>
+            <td>
+              {% if ch.timeshift_profile %}
+                {% with p=ch.timeshift_profile %}
+                  Enabled: <strong>{{ p.enabled|yesno:"Yes,No" }}</strong><br>
+                  Delay: <strong>{{ p.delay_minutes }}</strong> minutes<br>
+                  Output UDP URL: <code>{{ p.output_udp_url }}</code>
+                {% endwith %}
+              {% else %}
+                <em>No TimeShiftProfile configured for this channel.</em>
+              {% endif %}
+            </td>
+          </tr>
+          </tbody>
+        </table>
+
+        <h4>Recording schedules (Record)</h4>
+        {% if scheds.record %}
+          <table class="tx-table">
+            <thead>
+            <tr>
+              <th style="width: 5%;">ID</th>
+              <th>Name</th>
+              <th style="width: 25%;">Active days</th>
+              <th style="width: 20%;">Time window</th>
+              <th style="width: 10%;">Enabled</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for rs in scheds.record %}
+              <tr>
+                <td>{{ rs.id }}</td>
+                <td>
+                  <a href="{% url 'admin:transcoder_recurringschedule_change' rs.id %}">
+                    {{ rs.name }}
+                  </a>
+                </td>
+                <td>{{ rs.weekdays_text }}</td>
+                <td>{{ rs.start_time }} – {{ rs.end_time }}</td>
+                <td>{{ rs.enabled|yesno:"Yes,No" }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p><em>No recording schedules for this channel.</em></p>
+        {% endif %}
+
+        <h4>Playback schedules (Delayed)</h4>
+        {% if scheds.playback %}
+          <table class="tx-table">
+            <thead>
+            <tr>
+              <th style="width: 5%;">ID</th>
+              <th>Name</th>
+              <th style="width: 25%;">Active days</th>
+              <th style="width: 20%;">Time window</th>
+              <th style="width: 10%;">Enabled</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for rs in scheds.playback %}
+              <tr>
+                <td>{{ rs.id }}</td>
+                <td>
+                  <a href="{% url 'admin:transcoder_recurringschedule_change' rs.id %}">
+                    {{ rs.name }}
+                  </a>
+                </td>
+                <td>{{ rs.weekdays_text }}</td>
+                <td>{{ rs.start_time }} – {{ rs.end_time }}</td>
+                <td>{{ rs.enabled|yesno:"Yes,No" }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p><em>No playback schedules for this channel.</em></p>
+        {% endif %}
+
+        {% if scheds.other %}
+          <h4>Other schedules</h4>
+          <ul>
+            {% for rs in scheds.other %}
+              <li>
+                #{{ rs.id }} – {{ rs.name }} (purpose = {{ rs.purpose }})
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    {% endwith %}
+  {% empty %}
+    <p>No channels configured yet.</p>
+  {% endfor %}
+
+{% endblock %}

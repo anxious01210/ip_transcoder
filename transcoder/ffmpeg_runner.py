@@ -227,12 +227,17 @@ class FFmpegJobConfig:
                     f"No enabled TimeShiftProfile configured for channel {chan.name!r}"
                 )
 
+            # Pick the TS segment that corresponds to "now - delay_minutes"
             playback_file = self._find_playback_segment(profile)
 
-            # -re to output at real-time pace; stream_loop to avoid immediate exit.
+            # Important:
+            # - We KEEP -re so the file is pushed at real-time pace.
+            # - We REMOVE -stream_loop so ffmpeg exits at the end of this segment.
+            #   The transcoder_enforcer will then start a new playback job, which
+            #   will select the next appropriate segment based on (now - delay).
             args += [
                 "-re",
-                "-stream_loop", "-1",  # loop the chosen segment infinitely for now
+                # "-stream_loop", "-1",  # loop the chosen segment infinitely for now
                 "-i", str(playback_file),
                 "-c:v", "copy",
                 "-c:a", "copy",

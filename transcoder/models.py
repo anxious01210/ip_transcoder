@@ -178,144 +178,6 @@ class Schedule(models.Model):
         return f"{self.name} ({self.channel.name})"
 
 
-# class Channel(models.Model):
-#     """
-#     One logical source (multicast, RTSP, RTMP, file) and how we handle it.
-#     Copy/remux by default; transcoding only when explicitly enabled.
-#     """
-#     name = models.CharField(max_length=100, unique=True)
-#     enabled = models.BooleanField(default=True)
-#
-#     # Input
-#     input_type = models.CharField(max_length=20, choices=InputType.choices)
-#     input_url = models.CharField(
-#         max_length=512,
-#         help_text=(
-#             "For multicast: e.g. udp://@224.2.2.2:2001 "
-#             "(we'll add fifo_size & overrun options automatically)."
-#         ),
-#     )
-#     multicast_interface = models.CharField(
-#         max_length=64,
-#         blank=True,
-#         help_text="Optional: e.g. eth0. Leave blank to use system default.",
-#     )
-#
-#     # Output
-#     output_type = models.CharField(max_length=20, choices=OutputType.choices)
-#     output_target = models.CharField(
-#         max_length=512,
-#         help_text="For HLS: directory path; for RTMP/UDP: URL (udp://ip:port, rtmp://...).",
-#     )
-#
-#     # Recording settings
-#     record_enabled = models.BooleanField(
-#         default=True,
-#         help_text="If on, we are allowed to record this channel to disk.",
-#     )
-#
-#     recording_path_template = models.CharField(
-#         max_length=512,
-#         default="recordings/{channel}/{date}/",
-#         help_text=(
-#             "Path where recordings will be stored. "
-#             "Relative paths are under MEDIA_ROOT. "
-#             "Use {channel}, {date}, {time} placeholders."
-#         ),
-#     )
-#
-#     recording_segment_minutes = models.PositiveIntegerField(
-#         default=60,
-#         help_text="Length of each recording segment in minutes.",
-#     )
-#
-#     # Codec / processing – copy by default
-#     video_mode = models.CharField(
-#         max_length=16, choices=VideoMode.choices, default=VideoMode.COPY
-#     )
-#     audio_mode = models.CharField(
-#         max_length=16, choices=AudioMode.choices, default=AudioMode.COPY
-#     )
-#
-#     video_codec = models.CharField(
-#         max_length=16,
-#         default="h264",
-#         help_text="Used only when transcoding (e.g. h264, hevc).",
-#     )
-#     audio_codec = models.CharField(
-#         max_length=16,
-#         default="aac",
-#         help_text="Used only when transcoding audio.",
-#     )
-#
-#     hardware_preference = models.CharField(
-#         max_length=16,
-#         choices=HardwarePreference.choices,
-#         default=HardwarePreference.AUTO,
-#         help_text="AUTO = NVIDIA → Intel → CPU; or force one.",
-#     )
-#
-#     # Transcoding constraints (only if video_mode=TRANSCODE)
-#     target_width = models.PositiveIntegerField(
-#         null=True, blank=True, help_text="E.g. 1920. If null, keep source width."
-#     )
-#     target_height = models.PositiveIntegerField(
-#         null=True, blank=True, help_text="E.g. 1080. If null, keep source height."
-#     )
-#     video_bitrate = models.CharField(
-#         max_length=16,
-#         blank=True,
-#         help_text="E.g. 4000k. If blank, FFmpeg decides.",
-#     )
-#
-#     created_at = models.DateTimeField(default=timezone.now)
-#     updated_at = models.DateTimeField(auto_now=True)
-#
-#     class Meta:
-#         ordering = ["name"]
-#
-#     def __str__(self) -> str:
-#         return self.name
-
-
-# class Schedule(models.Model):
-#     """
-#     One scheduled job for a channel:
-#     - LIVE_FORWARD: take input and restream (e.g. to HLS/RTMP)
-#     - RECORD: take input and save to disk
-#     For now: simple one-off schedule with start/end datetimes.
-#     """
-#     name = models.CharField(max_length=100)
-#     channel = models.ForeignKey(
-#         Channel,
-#         on_delete=models.CASCADE,
-#         related_name="schedules",
-#     )
-#     purpose = models.CharField(
-#         max_length=16,
-#         choices=JobPurpose.choices,
-#         default=JobPurpose.LIVE_FORWARD,
-#     )
-#
-#     enabled = models.BooleanField(default=True)
-#
-#     start_at = models.DateTimeField(
-#         help_text="When this job should start (server time)."
-#     )
-#     end_at = models.DateTimeField(
-#         help_text="When this job should stop (server time)."
-#     )
-#
-#     created_at = models.DateTimeField(default=timezone.now)
-#     updated_at = models.DateTimeField(auto_now=True)
-#
-#     class Meta:
-#         ordering = ["-start_at"]
-#
-#     def __str__(self) -> str:
-#         return f"{self.name} ({self.channel.name})"
-
-
 class RecurringSchedule(models.Model):
     """
     Weekly recurring schedule.
@@ -429,13 +291,13 @@ class RecurringSchedule(models.Model):
 
         # Weekday check via booleans (note: weekday() is Mon=0..Sun=6)
         weekday_flags = [
-            self.monday,    # 0
-            self.tuesday,   # 1
-            self.wednesday, # 2
+            self.monday,  # 0
+            self.tuesday,  # 1
+            self.wednesday,  # 2
             self.thursday,  # 3
-            self.friday,    # 4
+            self.friday,  # 4
             self.saturday,  # 5
-            self.sunday,    # 6
+            self.sunday,  # 6
         ]
         if not weekday_flags[weekday]:
             return False
@@ -451,7 +313,6 @@ class RecurringSchedule(models.Model):
         else:
             # Overnight window: e.g. 20:00 -> 06:00
             return (local_time >= self.start_time) or (local_time < self.end_time)
-
 
 
 class TimeShiftProfile(models.Model):
@@ -476,7 +337,7 @@ class TimeShiftProfile(models.Model):
 
     output_udp_url = models.CharField(
         max_length=512,
-        help_text="UDP TS URL for delayed output, e.g. udp://239.0.0.10:2001",
+        help_text="UDP TS URL for delayed output, e.g. udp://239.0.0.10:2001?ttl=1&pkt_size=1316",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
