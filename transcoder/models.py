@@ -345,10 +345,19 @@ class RecurringSchedule(models.Model):
     sunday = models.BooleanField(default=True)
 
     start_time = models.TimeField(
-        help_text="Local start time (HH:MM)."
+        help_text=(
+            "Local start time (HH:MM). "
+            "If Start time and End time are both set to 00:00, the schedule runs for the entire day."
+        )
     )
+
     end_time = models.TimeField(
-        help_text="Local end time (HH:MM). Supports overnight windows like 20:00 → 06:00."
+        help_text=(
+            "Local end time (HH:MM). "
+            "If later than Start time, the schedule runs within the same day. "
+            "If earlier than Start time, the schedule runs overnight. "
+            "If Start time and End time are both set to 00:00, the schedule runs for the entire day."
+        )
     )
 
     date_from = models.DateField(
@@ -398,6 +407,11 @@ class RecurringSchedule(models.Model):
     def is_active_now(self, now: datetime.datetime) -> bool:
         """
         Check if this recurring schedule should be active at the given 'now' (local time).
+
+        Semantics:
+        - If start_time == end_time  -> active the FULL day for selected weekdays.
+        - If start_time < end_time   -> active between start and end on the same day.
+        - If start_time > end_time   -> overnight window (e.g. 20:00 -> 06:00 next day).
         """
         if not self.enabled:
             return False
@@ -412,30 +426,31 @@ class RecurringSchedule(models.Model):
         if self.date_to and local_date > self.date_to:
             return False
 
-        # Weekday check via booleans (note: weekday() is still Mon=0..Sun=6)
+        # Weekday check via booleans (note: weekday() is Mon=0..Sun=6)
         weekday_flags = [
-            self.monday,  # 0
-            self.tuesday,  # 1
-            self.wednesday,  # 2
+            self.monday,    # 0
+            self.tuesday,   # 1
+            self.wednesday, # 2
             self.thursday,  # 3
-            self.friday,  # 4
+            self.friday,    # 4
             self.saturday,  # 5
-            self.sunday,  # 6
+            self.sunday,    # 6
         ]
         if not weekday_flags[weekday]:
             return False
 
-        # Time window (support overnight)
-        if self.start_time <= self.end_time:
-            # Normal case: 08:00 → 20:00
-            if not (self.start_time <= local_time < self.end_time):
-                return False
-        else:
-            # Overnight: e.g. 20:00 → 06:00
-            if not (local_time >= self.start_time or local_time < self.end_time):
-                return False
+        # Time window semantics
+        if self.start_time == self.end_time:
+            # Full-day: active 24 hours for the selected weekdays
+            return True
 
-        return True
+        if self.start_time < self.end_time:
+            # Normal daytime window: e.g. 08:00 -> 20:00
+            return self.start_time <= local_time < self.end_time
+        else:
+            # Overnight window: e.g. 20:00 -> 06:00
+            return (local_time >= self.start_time) or (local_time < self.end_time)
+
 
 
 class TimeShiftProfile(models.Model):

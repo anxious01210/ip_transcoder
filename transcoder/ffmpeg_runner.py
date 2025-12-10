@@ -7,6 +7,7 @@ from django.conf import settings
 from .models import Channel, VideoMode, AudioMode
 
 
+
 @dataclass
 class FFmpegJobConfig:
     channel: Channel
@@ -16,50 +17,74 @@ class FFmpegJobConfig:
         """
         Builds an ffmpeg command for this channel & purpose.
 
-        For now:
-        - Copy/remux by default (no transcoding).
-        - Only handles:
-          - input_type: FILE or UDP_MULTICAST
-          - purpose: "live_forward" with HLS output
-        We’ll extend it later.
+        Cross-platform rules:
+        - FILE inputs: relative paths are resolved under MEDIA_ROOT.
+        - HLS outputs: relative output_target is treated as a folder under MEDIA_ROOT.
+        - Recording paths: relative recording_path_template is treated under MEDIA_ROOT.
+        - Network URLs (UDP/RTSP/RTMP) are used as-is.
         """
         chan = self.channel
-        input_url = chan.input_url
-        output_target = chan.output_target
 
-        # Base ffmpeg command
+        raw_input_url = chan.input_url
+        raw_output_target = chan.output_target
+
+        # Base ffmpeg command – assumes "ffmpeg" is in PATH (works on Windows & Linux)
         args: List[str] = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "warning"]
 
-        # Multicast helper (we’ll refine later)
-        if chan.input_type == "udp_multicast":
+        # ------------------------
+        # Input URL resolution
+        # ------------------------
+        input_url = raw_input_url
+
+        if chan.input_type == "file":
+            # Treat input_url as file path, relative to MEDIA_ROOT when not absolute
+            in_path = Path(raw_input_url)
+            if not in_path.is_absolute():
+                in_path = Path(settings.MEDIA_ROOT) / in_path
+            input_url = str(in_path)
+
+        elif chan.input_type == "udp_multicast":
+            # Multicast helper – keep URL as-is but ensure fifo_size & overrun flags
             if "fifo_size=" not in input_url:
                 sep = "&" if "?" in input_url else "?"
                 input_url = f"{input_url}{sep}fifo_size=1000000&overrun_nonfatal=1"
 
+        # (RTSP / RTMP inputs are used as-is)
+
+        # ------------------------
         # Input
+        # ------------------------
         args += ["-i", input_url]
 
-        # Video: copy by default
+        # ------------------------
+        # Video handling
+        # ------------------------
         if chan.video_mode == VideoMode.COPY:
             args += ["-c:v", "copy"]
         else:
-            # We’ll plug transcoding & GPU logic here later
-            args += ["-c:v", "libx264"]
+            # We'll plug in proper GPU/transcode logic later
+            args += ["-c:v", chan.video_codec or "libx264"]
 
-        # Audio: copy / disable / transcode
+        # ------------------------
+        # Audio handling
+        # ------------------------
         if chan.audio_mode == AudioMode.COPY:
             args += ["-c:a", "copy"]
         elif chan.audio_mode == AudioMode.DISABLE:
             args += ["-an"]
         else:
-            # Basic default for now
             args += ["-c:a", chan.audio_codec or "aac"]
 
+        # ------------------------
         # Purpose-specific handling
+        # ------------------------
         if self.purpose == "live_forward":
-            # Same as before: forward live to an output
+            # Forward live input to an output
             if chan.output_type == "hls":
-                out_dir = Path(output_target)
+                # HLS output_target is treated as a directory.
+                out_dir = Path(raw_output_target)
+                if not out_dir.is_absolute():
+                    out_dir = Path(settings.MEDIA_ROOT) / out_dir
                 out_dir.mkdir(parents=True, exist_ok=True)
                 playlist_path = out_dir / "index.m3u8"
 
@@ -72,23 +97,27 @@ class FFmpegJobConfig:
                 ]
 
             elif chan.output_type == "rtmp":
-                args += ["-f", "flv", output_target]
+                # Network URL, use as-is
+                args += ["-f", "flv", raw_output_target]
 
             elif chan.output_type == "udp_ts":
-                args += ["-f", "mpegts", output_target]
+                # Network URL, use as-is
+                args += ["-f", "mpegts", raw_output_target]
 
             else:
-                # fallback: TS file
-                args += ["-f", "mpegts", output_target]
+                # Fallback: treat output_target as a file path (relative to MEDIA_ROOT if not absolute)
+                out_path = Path(raw_output_target)
+                if not out_path.is_absolute():
+                    out_path = Path(settings.MEDIA_ROOT) / out_path
+                args += ["-f", "mpegts", str(out_path)]
 
         elif self.purpose == "record":
-            # Record to disk in segments, using recording_path_template
-            # For now we create a simple folder based on channel name + date.
+            # Record to disk in TS segments using recording_path_template
             from datetime import datetime
 
             now = datetime.now()
             date_str = now.strftime("%Y%m%d")
-            # You can expand template usage later
+
             base_dir_str = chan.recording_path_template.format(
                 channel=chan.name,
                 date=date_str,
@@ -102,7 +131,7 @@ class FFmpegJobConfig:
 
             base_dir.mkdir(parents=True, exist_ok=True)
 
-            # Example filename pattern: channel_00001.ts, channel_00002.ts, ...
+            # Example filename pattern: <channel>_00001.ts, <channel>_00002.ts, ...
             segment_pattern = str(base_dir / f"{chan.name}_%05d.ts")
 
             segment_seconds = chan.recording_segment_minutes * 60
@@ -114,7 +143,7 @@ class FFmpegJobConfig:
                 segment_pattern,
             ]
 
-        # We’ll add "playback" cases later (for time-shift).
+        # We'll add "playback" cases later (for time-shift).
         return args
 
 
